@@ -20,6 +20,7 @@ var server = http.createServer(function(request, response) {
   var method = request.method;
 
   /******** 从这里开始看，上面不要看 ************/
+  const session = JSON.parse(fs.readFileSync('./session.json').toString())
 
   console.log("有个傻子发请求过来啦！路径（带查询参数）为：" + pathWithQuery);
 
@@ -38,38 +39,43 @@ var server = http.createServer(function(request, response) {
       if (user === undefined) {
         response.statusCode = 400;
         response.setHeader("Content-Type", "text/json; charset=utf-8");
-      }
-      else {
+      } else {
         response.statusCode = 200;
-        response.setHeader('Set-Cookie',`user_id=${user.id}; HttpOnly`)
+        const random = Math.random()
+        session[random] = {user_id: user.id}
+        fs.writeFileSync('./session.json', JSON.stringify(session))
+        response.setHeader("Set-Cookie", `session_id=${random}; HttpOnly`);
       }
+      response.end()
     });
   } else if (path === "/home.html") {
-    const cookie = request.headers['cookie']
-    let userId
-    try{
-      userId = cookie.split(';').filter(s=> s.indexOf('user_id=')>=0)[0].split('=')[1]
-    }catch (error) {
-
-    }
-    if(userId){
+    // 写不出来
+    const cookie = request.headers["cookie"];
+    let sessionId;
+    try {
+      sessionId = cookie
+        .split(";")
+        .filter(s => s.indexOf("session_id=") >= 0)[0]
+        .split("=")[1];
+    } catch (error) {}
+    if (sessionId && session[sessionId]) {
+      const userId = session[sessionId].user_id
       const userArray = JSON.parse(fs.readFileSync("./db/users.json"));
-      const user = userArray.find(user=> user.id.toString() === userId)
-      const homeHtml = fs.readFileSync("./public/home.html").toString()
-      let  string
-      if(user){
-         string = homeHtml.replace('{{loginStatus}}', '已登录')
-           .replace('{{user.name}}', user.name)
-      }else{
-
+      const user = userArray.find(user => user.id === userId);
+      const homeHtml = fs.readFileSync("./public/home.html").toString();
+      let string = ''
+      if (user) {
+        string = homeHtml.replace("{{loginStatus}}", "已登录")
+          .replace('{{user.name}}', user.name)
       }
-      response.write(string)
-    }else{
-      const homeHtml = fs.readFileSync("./public/home.html").toString()
-      const string = homeHtml.replace('{{loginStatus}}', '未登录')
+      response.write(string);
+    } else {
+      const homeHtml = fs.readFileSync("./public/home.html").toString();
+      const string = homeHtml.replace("{{loginStatus}}", "未登录")
         .replace('{{user.name}}', '')
-      response.write(string)
+      response.write(string);
     }
+    response.end()
   } else if (path === "/register" && method === "POST") {
     response.setHeader("Content-Type", "text/html; charset=utf-8");
     const userArray = JSON.parse(fs.readFileSync("./db/users.json"));
@@ -89,6 +95,7 @@ var server = http.createServer(function(request, response) {
       };
       userArray.push(newUser);
       fs.writeFileSync("./db/users.json", JSON.stringify(userArray));
+      response.end()
     });
   } else {
     response.statusCode = 200;
@@ -116,8 +123,8 @@ var server = http.createServer(function(request, response) {
       response.statusCode = 404;
     }
     response.write(content);
+    response.end();
   }
-  response.end();
 
   /******** 代码结束，下面不要看 ************/
 });
